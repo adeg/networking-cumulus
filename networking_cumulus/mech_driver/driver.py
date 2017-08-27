@@ -1,4 +1,4 @@
-# Copyright 2016 Cumulus Networks
+# Copyright 2016,2017 Cumulus Networks
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -106,16 +106,34 @@ class CumulusMechanismDriver(api.MechanismDriver):
     def bind_port(self, context):
         if context.binding_levels:
             return  # we've already got a top binding
+        port = context.current
+        for segment in context.segments_to_bind:
+            physnet = segment.get(api.PHYSICAL_NETWORK)
+            # If physnet was not found, we cannot bind this port
+            if not physnet:
+                LOG.debug("bind_port for port %(port)s: no physical_network "
+                          "found", {'port': port.get('id')})
+                continue
 
-        # assign a dynamic vlan
-        next_segment = context.allocate_dynamic_segment(
-            {'id': context.network.current, 'network_type': 'vlan'}
-        )
+            if segment[api.NETWORK_TYPE] == 'vxlan':
 
-        context.continue_binding(
-            context.segments_to_bind[0]['id'],
-            [next_segment]
-        )
+                try:
+                    next_segment = context.allocate_dynamic_segment(
+                        {'id': context.network.current['id'],
+                         'network_type': 'vlan',
+                         'physical_network': physnet})
+                except Exception as exc:
+                    LOG.error(_LI("cumulus bind_port for port %(port)s: Failed"
+                                  " to allocate dynamic segment for physnet "
+                                  "%(physnet)s. %(exc)s"),
+                              {'port': port.get('id'), 'physnet': physnet,
+                               'exc': exc})
+                    return
+
+                context.continue_binding(
+                    segment['id'],
+                    [next_segment]
+                )
 
     def create_network_precommit(self, context):
         network = context.current
@@ -156,7 +174,9 @@ class CumulusMechanismDriver(api.MechanismDriver):
                             {'spf':
                              self.switch_info[_switch_id, 'spf_enable'],
                              'newbridge':
-                             self.switch_info[_switch_id, 'new_bridge']})
+                             self.switch_info[_switch_id, 'new_bridge']}),
+                        auth=(self.username, self.password),
+                        verify=False
                     )
 
                     if resp.status_code != requests.codes.ok:
@@ -189,7 +209,9 @@ class CumulusMechanismDriver(api.MechanismDriver):
                         port=self.protocol_port,
                         bridge=bridge_name,
                         vlanid=vlan_id
-                    )
+                    ),
+                    auth=(self.username, self.password),
+                    verify=False
                 )
 
                 if resp.status_code != requests.codes.ok:
@@ -353,7 +375,9 @@ class CumulusMechanismDriver(api.MechanismDriver):
 
             for action in actions:
                 try:
-                    resp = requests.put(action)
+                    resp = requests.put(action,
+                                        auth=(self.username, self.password),
+                                        verify=False)
 
                     if resp.status_code != requests.codes.ok:
                         msg = (_("Error (%(code)s) update port for %(host)s on"
@@ -412,7 +436,9 @@ class CumulusMechanismDriver(api.MechanismDriver):
 
             for action in actions:
                 try:
-                    resp = requests.delete(action)
+                    resp = requests.delete(action,
+                                           auth=(self.username, self.password),
+                                           verify=False)
 
                     if resp.status_code != requests.codes.ok:
                         msg = (_("Error (%(code)s) delete port for %(host)s on"
@@ -447,7 +473,9 @@ class CumulusMechanismDriver(api.MechanismDriver):
                 data=json.dumps({'spf':
                                  self.switch_info[switch_id, 'spf_enable'],
                                  'newbridge':
-                                 self.switch_info[switch_id, 'new_bridge']})
+                                 self.switch_info[switch_id, 'new_bridge']}),
+                auth=(self.username, self.password),
+                verify=False
             )
 
             if resp.status_code != requests.codes.ok:
@@ -489,7 +517,9 @@ class CumulusMechanismDriver(api.MechanismDriver):
 
         for action in actions:
             try:
-                resp = requests.put(action)
+                resp = requests.put(action,
+                                    auth=(self.username, self.password),
+                                    verify=False)
 
                 if resp.status_code != requests.codes.ok:
                     msg = (_("Error %(code)d replay to switch %(switch_id)s") %
@@ -541,16 +571,34 @@ class CumulusSwitchSync(object):
                         scheme=self._mech_driver.scheme,
                         base=switch_id,
                         port=self._mech_driver.protocol_port
-                    )
+                    ),
+                    auth=(self._mech_driver.username,
+                          self._mech_driver.password),
+                    verify=False
                 )
 
-                data = resp.json()
-
-                if data != self._mech_driver.switch_info[switch_id, 'hash_id']:
+                if resp.status_code != requests.codes.ok:
+                    msg = (_("Switch (%(switch_id)s) is unresponsive."
+                             " HTTP Error %(error)d") %
+                           {'switch_id': switch_id,
+                            'error': resp.status_code})
+                    LOG.info(msg)
                     self._mech_driver.switch_info[switch_id, 'state'] = \
-                        SwitchState.active
-                    self._mech_driver.switch_info[switch_id, 'replay'] = True
-                    self._mech_driver.switch_info[switch_id, 'hash_id'] = data
+                        SwitchState.inactive
+                    self._mech_driver.switch_info[switch_id, 'replay'] = False
+                    self._mech_driver.switch_info[switch_id, 'hash_id'] = \
+                        INVALID_HASH_ID
+                else:
+                    data = resp.json()
+
+                    if data != self._mech_driver.switch_info[switch_id,
+                                                             'hash_id']:
+                        self._mech_driver.switch_info[switch_id, 'state'] = \
+                            SwitchState.active
+                        self._mech_driver.switch_info[switch_id, 'replay'] = \
+                            True
+                        self._mech_driver.switch_info[switch_id, 'hash_id'] = \
+                            data
 
             except requests.exceptions.RequestException:
                 self._mech_driver.switch_info[switch_id, 'state'] = \
