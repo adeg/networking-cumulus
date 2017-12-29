@@ -24,11 +24,13 @@ from oslo_log import log as logging
 import requests
 
 from neutron.extensions import portbindings
+
+from neutron.plugins.common import constants as const
+
 from neutron.plugins.ml2.common.exceptions import MechanismDriverError
 from neutron.plugins.ml2 import driver_api as api
 
 from neutron_lib.api.definitions import provider_net as pnet
-from neutron_lib import constants as const
 
 from networking_cumulus._i18n import _, _LI
 from networking_cumulus.mech_driver import config  # noqa
