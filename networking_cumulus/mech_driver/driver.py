@@ -1,4 +1,4 @@
-# Copyright 2016,2017 Cumulus Networks
+# Copyright 2016,2017,2018 Cumulus Networks
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -22,8 +22,6 @@ from enum import Enum
 from oslo_config import cfg
 from oslo_log import log as logging
 import requests
-
-from neutron.extensions import portbindings
 
 from neutron.plugins.common import constants as const
 
@@ -109,14 +107,22 @@ class CumulusMechanismDriver(api.MechanismDriver):
             bridge_name = OLD_BRIDGE_NAME_PREFIX + network_id[:12]
             return bridge_name
 
-    def _get_segment_ids(self, top_segment, bottom_segment):
-        if top_segment is None:
+    def _get_segment_ids(self, context):
+
+        """Common function to retrieve VLAN Id and VNI
+
+        This function is used to extract network VLAN Id, VNI and type from the
+        context and return these values.
+        """
+        if not hasattr(context, 'top_bound_segment') or \
+            (context.top_bound_segment is None):
             return INVALID_VLAN_ID, INVALID_VNI, False
-        elif top_segment[api.NETWORK_TYPE] == const.TYPE_VXLAN:
-            return bottom_segment[api.SEGMENTATION_ID],\
-                top_segment[api.SEGMENTATION_ID], True
+        elif context.top_bound_segment[api.NETWORK_TYPE] == const.TYPE_VXLAN:
+            return context.bottom_bound_segment[api.SEGMENTATION_ID],\
+                context.top_bound_segment[api.SEGMENTATION_ID], True
         else:
-            return top_segment[api.SEGMENTATION_ID], INVALID_VNI, False
+            return context.top_bound_segment[api.SEGMENTATION_ID], \
+                INVALID_VNI, False
 
     def bind_port(self, context):
 
@@ -196,11 +202,9 @@ class CumulusMechanismDriver(api.MechanismDriver):
         device_id = port['device_id']
         network_id = port['network_id']
         tenant_id = port['tenant_id']
-        host = port[portbindings.HOST_ID]
+        host = port['binding:host_id']
 
-        vlan_id, vni, is_vxlan = (self._get_segment_ids(
-                                  context.top_bound_segment,
-                                  context.bottom_bound_segment))
+        vlan_id, vni, is_vxlan = (self._get_segment_ids(context))
 
         with self.sync_thread_lock:
             bridge_name = db.db_get_bridge_name(tenant_id, network_id)
@@ -236,17 +240,15 @@ class CumulusMechanismDriver(api.MechanismDriver):
         network_id = port['network_id']
         tenant_id = port['tenant_id']
         device_id = port['device_id']
-        host = port[portbindings.HOST_ID]
+        host = port['binding:host_id']
         orig_port = context.original
-        orig_host = orig_port[portbindings.HOST_ID]
+        orig_host = orig_port['binding:host_id']
         orig_vlan_id = None
 
         if not host:
             return
 
-        vlan_id, vni, is_vxlan = (self._get_segment_ids(
-                                  context.top_bound_segment,
-                                  context.bottom_bound_segment))
+        vlan_id, vni, is_vxlan = (self._get_segment_ids(context))
         if vlan_id == INVALID_VLAN_ID:
             return
 
@@ -297,17 +299,12 @@ class CumulusMechanismDriver(api.MechanismDriver):
         port = context.current
         device_id = port['device_id']
         device_owner = port['device_owner']
-        host = port[portbindings.HOST_ID]
-        if not hasattr(context, 'top_bound_segment') or \
-           (context.top_bound_segment is None):
-            return
+        host = port['binding:host_id']
 
         if not (host and device_id and device_owner):
             return
 
-        vlan_id, vni, is_vxlan = (self._get_segment_ids(
-                                  context.top_bound_segment,
-                                  context.bottom_bound_segment))
+        vlan_id, vni, is_vxlan = (self._get_segment_ids(context))
 
         if vlan_id == INVALID_VLAN_ID:
             return
@@ -391,7 +388,7 @@ class CumulusMechanismDriver(api.MechanismDriver):
                     LOG.info(msg)
 
     def _remove_from_switch(self, port, network, remove_net):
-        host = port[portbindings.HOST_ID]
+        host = port['binding:host_id']
         port_id = port['id']
 
         with self.sync_thread_lock:

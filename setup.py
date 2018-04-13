@@ -28,7 +28,7 @@ except ImportError:
     pass
 
 setup(
-    version='1.0.1',
+    version='2.0.0',
 )
 
 setuptools.setup(
