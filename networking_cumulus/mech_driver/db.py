@@ -1,4 +1,4 @@
-# Copyright 2016 Cumulus Networks
+# Copyright 2016,2018 Cumulus Networks
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,16 +13,16 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import neutron.db.api as db_api
 import neutron.db.models.segment as seg_models
 
 from networking_cumulus.mech_driver import models as db_models
+from networking_cumulus import version_abstract as va
 
 VLAN_SEGMENTATION = 'vlan'
 
 
 def db_create_network(tenant_id, network_id, vlan_id, bridge_name):
-    session = db_api.get_session()
+    session = va.get_db_write_sess()
     with session.begin():
         network = (session.query(db_models.CumulusNetworks)
                    .filter_by(network_id=network_id,
@@ -37,7 +37,7 @@ def db_create_network(tenant_id, network_id, vlan_id, bridge_name):
 
 
 def db_delete_network(tenant_id, network_id):
-    session = db_api.get_session()
+    session = va.get_db_write_sess()
     with session.begin():
         (session.query(db_models.CumulusNetworks)
          .filter_by(network_id=network_id,
@@ -45,7 +45,7 @@ def db_delete_network(tenant_id, network_id):
 
 
 def db_get_bridge_name(tenant_id, network_id):
-    session = db_api.get_session()
+    session = va.get_db_read_sess()
     with session.begin():
         network = (session.query(db_models.CumulusNetworks)
                    .filter_by(network_id=network_id,
@@ -57,7 +57,7 @@ def db_get_bridge_name(tenant_id, network_id):
 
 
 def db_get_network(tenant_id, network_id):
-    session = db_api.get_session()
+    session = va.get_db_read_sess()
     with session.begin():
         network = (session.query(db_models.CumulusNetworks)
                    .filter_by(network_id=network_id,
@@ -69,7 +69,7 @@ def db_get_network(tenant_id, network_id):
 
 
 def db_get_seg_type(network_id):
-    session = db_api.get_session()
+    session = va.get_db_read_sess()
     with session.begin():
         segment = (session.query(seg_models.NetworkSegment)
                    .filter_by(network_id=network_id).first())
@@ -81,7 +81,7 @@ def db_get_seg_type(network_id):
 
 def db_create_port(tenant_id, network_id, port_id, host_id, device_id,
                    bridge_name, server_id, vni):
-    session = db_api.get_session()
+    session = va.get_db_write_sess()
     with session.begin():
         port = (session.query(db_models.CumulusPorts)
                 .filter_by(network_id=network_id,
@@ -102,7 +102,7 @@ def db_create_port(tenant_id, network_id, port_id, host_id, device_id,
 
 
 def db_delete_port(network_id, port_id, server_id, host_id):
-    session = db_api.get_session()
+    session = va.get_db_write_sess()
     with session.begin():
         session.query(db_models.CumulusPorts).filter_by(
             network_id=network_id,
@@ -113,7 +113,7 @@ def db_delete_port(network_id, port_id, server_id, host_id):
 
 def db_update_port(tenant_id, network_id, port_id, host_id, device_id,
                    bridge_name, server_id, vni):
-    session = db_api.get_session()
+    session = va.get_db_write_sess()
     with session.begin():
         all_ports = (session.query(db_models.CumulusPorts)
                      .filter_by(network_id=network_id,
@@ -126,7 +126,7 @@ def db_update_port(tenant_id, network_id, port_id, host_id, device_id,
 
 
 def db_get_ports_by_server_id(server_id):
-    session = db_api.get_session()
+    session = va.get_db_read_sess()
     with session.begin():
         all_ports = (session.query(db_models.CumulusPorts)
                      .filter_by(server_id=server_id).all())
@@ -134,7 +134,7 @@ def db_get_ports_by_server_id(server_id):
 
 
 def db_get_port(network_id, port_id, server_id, host_id):
-    session = db_api.get_session()
+    session = va.get_db_read_sess()
     with session.begin():
         port = session.query(db_models.CumulusPorts).filter_by(
             network_id=network_id,
