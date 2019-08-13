@@ -40,7 +40,7 @@ else:
     from neutron.extensions import portbindings  # noqa
 
 if NEUTRON_VERSION > NEUTRON_PIKE_VERSION:
-    from neutron.db import api as db_api
+    from neutron_lib.db import api as db_api
     from neutron_lib.plugins.ml2 import api  # noqa
 
     def get_db_read_sess():
